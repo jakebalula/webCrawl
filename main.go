@@ -6,6 +6,7 @@ import (
   "io"
   "net/http"
   "strings"
+  "sync"
 )
 
 // fetchURL sends an HTTP Get request and returns the response body as a string.
@@ -44,17 +45,43 @@ func extractLinks(htmlContent string) []string {
   }
 }
 
-func main() {
-  url := "https://github.com/jakebalula"
+func crawl(url string, depth int, visited map[string]bool, mu *sync.Mutex, wg *sync.WaitGroup) {
+  defer wg.Done()
+
+  if depth <= 0 {
+    return
+  }
+  mu.Lock()
+  if visited[url] {
+    mu.Unlock()
+    return
+  }
+  visited[url] = true
+  mu.Unlock()
+
+  fmt.Println("Crawling:", url)
+
   content, err := fetchUrl(url)
   if err != nil {
-    fmt.Println("Error fetching URL:", err)
+    fmt.Println("Error fetching:", url)
     return
   }
   links := extractLinks(content)
-  fmt.Println("Extracted links:")
   for _, link := range links {
-    fmt.Println(link)
+    wg.Add(1)
+    go crawl(link, depth-1, visited, mu, wg)
   }
-  fmt.Println("Page content:", content[:500]) //This prints the first 500 characters
+}
+
+func main() {
+  url := "https://github.com/jakebalula"
+  maxDepth := 5
+  var wg sync.WaitGroup
+  var mu sync.Mutex
+  visited := make(map[string]bool)
+
+  wg.Add(1)
+  go crawl(url, maxDepth, visited, &mu, &wg)
+  wg.Wait()
+  fmt.Println("Crawled!")
 }
